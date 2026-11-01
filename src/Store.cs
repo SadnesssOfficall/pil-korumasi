@@ -14,6 +14,8 @@ public sealed class Settings
     public int HotLimitC { get; set; } = 45;
     public bool Sound { get; set; } = true;
     public bool StartMinimized { get; set; } = true;
+    public bool AutoUpdate { get; set; } = true;
+    public string? SkippedVersion { get; set; }
 }
 
 public sealed record HealthPoint(DateOnly Day, int FullMwh, int DesignMwh, int Cycles);

@@ -24,6 +24,13 @@ public partial class App : System.Windows.Application
     public BatterySnapshot? Last { get; private set; }
     public event Action<BatterySnapshot?>? Updated;
 
+    public UpdateInfo? Update { get; private set; }
+    public bool Checking { get; private set; }
+    public string? UpdateError { get; private set; }
+    public DateTime? LastCheck { get; private set; }
+    public event Action? UpdateChanged;
+    System.Windows.Threading.DispatcherTimer? _updateTimer;
+
     [DllImport("user32.dll")]
     static extern bool DestroyIcon(IntPtr handle);
 
@@ -49,6 +56,7 @@ public partial class App : System.Windows.Application
         var game = new Forms.ToolStripMenuItem("Oyun modu") { Checked = Settings.GameMode, CheckOnClick = true };
         game.CheckedChanged += (_, _) => { Settings.GameMode = game.Checked; Store.Save(Settings); Updated?.Invoke(Last); };
         menu.Items.Add(game);
+        menu.Items.Add("Güncellemeleri denetle", null, (_, _) => { ShowWindow("hakkinda"); _ = CheckForUpdates(true); });
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("Çıkış", null, (_, _) => Quit());
         menu.Opening += (_, _) => { guard.Checked = Settings.Protection; game.Checked = Settings.GameMode; };
@@ -59,7 +67,53 @@ public partial class App : System.Windows.Application
         _timer.Start();
         Tick();
 
-        if (!e.Args.Contains("--tray")) ShowWindow();
+        var page = e.Args.FirstOrDefault(a => a.StartsWith("--sayfa="))?["--sayfa=".Length..];
+        if (!e.Args.Contains("--tray")) ShowWindow(page);
+        if (e.Args.Contains("--guncellendi"))
+            new ToastWindow($"Pil Koruması {Updater.CurrentText} kuruldu", "Güncelleme tamamlandı. Yeniliklere Hakkında sayfasından bakabilirsin.", AlertKind.Update, () => ShowWindow("hakkinda")).Show();
+
+        _updateTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
+        _updateTimer.Tick += (_, _) =>
+        {
+            _updateTimer.Interval = TimeSpan.FromHours(6);
+            if (Settings.AutoUpdate) _ = CheckForUpdates(false);
+        };
+        _updateTimer.Start();
+    }
+
+    public async Task CheckForUpdates(bool manual)
+    {
+        if (Checking) return;
+        Checking = true;
+        UpdateError = null;
+        UpdateChanged?.Invoke();
+        try
+        {
+            var found = await Updater.CheckAsync();
+            var isNew = found is not null && Update?.Version != found.Version;
+            Update = found;
+            if (isNew && !manual && found!.Tag != Settings.SkippedVersion && _window is null)
+                new ToastWindow($"Yeni sürüm: {found.Version.ToString(3)}", "Pil Koruması için güncelleme hazır. Kurmak için tıkla.", AlertKind.Update, () => ShowWindow("hakkinda")).Show();
+        }
+        catch
+        {
+            UpdateError = "Güncelleme sunucusuna ulaşılamadı.";
+        }
+        finally
+        {
+            Checking = false;
+            LastCheck = DateTime.Now;
+            UpdateChanged?.Invoke();
+        }
+    }
+
+    /// <summary>İndirir, exe'yi değiştirecek betiği başlatır ve uygulamayı kapatır.</summary>
+    public async Task InstallUpdate(IProgress<double> progress)
+    {
+        if (Update is null) return;
+        var file = await Updater.DownloadAsync(Update, progress);
+        Updater.ApplyAndRestart(file);
+        Quit();
     }
 
     public void SettingsChanged()
@@ -68,7 +122,7 @@ public partial class App : System.Windows.Application
         Updated?.Invoke(Last);
     }
 
-    public void ShowWindow()
+    public void ShowWindow(string? page = null)
     {
         if (_window is null)
         {
@@ -78,11 +132,13 @@ public partial class App : System.Windows.Application
         _window.Show();
         if (_window.WindowState == System.Windows.WindowState.Minimized) _window.WindowState = System.Windows.WindowState.Normal;
         _window.Activate();
+        if (page is not null) _window.Navigate(page);
     }
 
-    void Quit()
+    public void Quit()
     {
         _timer?.Stop();
+        _updateTimer?.Stop();
         if (_tray is not null)
         {
             _tray.Visible = false;
@@ -190,4 +246,4 @@ public partial class App : System.Windows.Application
     }
 }
 
-public enum AlertKind { Upper, Lower, Hot }
+public enum AlertKind { Upper, Lower, Hot, Update }

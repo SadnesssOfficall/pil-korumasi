@@ -8,7 +8,7 @@ namespace PilKorumasi;
 
 public sealed class ToastWindow : Window
 {
-    public ToastWindow(string title, string body, AlertKind kind)
+    public ToastWindow(string title, string body, AlertKind kind, Action? onClick = null)
     {
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -24,9 +24,10 @@ public sealed class ToastWindow : Window
         {
             AlertKind.Lower => Color.FromRgb(242, 85, 90),
             AlertKind.Hot => Color.FromRgb(245, 165, 36),
+            AlertKind.Update => Color.FromRgb(96, 165, 250),
             _ => Color.FromRgb(61, 220, 151),
         };
-        var glyph = kind switch { AlertKind.Lower => "", AlertKind.Hot => "", _ => "" };
+        var glyph = kind switch { AlertKind.Lower => "", AlertKind.Hot => "", AlertKind.Update => "", _ => "" };
 
         var close = new Button
         {
@@ -79,7 +80,7 @@ public sealed class ToastWindow : Window
             Margin = new Thickness(12),
             Padding = new Thickness(16),
             CornerRadius = new CornerRadius(16),
-            Background = new SolidColorBrush(Color.FromRgb(22, 24, 33)),
+            Background = new LinearGradientBrush(Color.FromArgb(245, 24, 30, 36), Color.FromArgb(245, 14, 20, 24), 90),
             BorderBrush = new SolidColorBrush(Color.FromArgb(120, color.R, color.G, color.B)),
             BorderThickness = new Thickness(1),
             Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 24, ShadowDepth = 4, Opacity = 0.5 },
@@ -88,7 +89,8 @@ public sealed class ToastWindow : Window
 
         MouseLeftButtonUp += (_, _) =>
         {
-            ((App)Application.Current).ShowWindow();
+            if (onClick is not null) onClick();
+            else ((App)Application.Current).ShowWindow();
             Fade();
         };
 
@@ -98,7 +100,8 @@ public sealed class ToastWindow : Window
             Left = area.Right - ActualWidth - 8;
             Top = area.Bottom - ActualHeight - 8;
             Opacity = 0;
-            BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(220)));
+            BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(260)));
+            BeginAnimation(TopProperty, new DoubleAnimation(Top + 24, Top, TimeSpan.FromMilliseconds(360)) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
             var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(12) };
             timer.Tick += (_, _) =>
             {
